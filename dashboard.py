@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 import airtable_client
-import theme
 import transform
 
 
@@ -17,18 +16,10 @@ def load_projects():
     return [transform.record_to_project(r) for r in records]
 
 
-def _dot(value: bool) -> str:
-    return "🟢" if value else "🔴"
-
-
 def _build_dataframe(projects: list) -> pd.DataFrame:
     rows = []
     for p in projects:
-        pres = theme.get_confidential_presentation(
-            p["confidential"], p["confidential_reason"]
-        )
         rows.append({
-            "🔒": pres["icon"],
             "No": p["project_no"],
             "Compagnie": p["company"],
             "Projet": p["project"] or f"Projet #{p['project_no']}",
@@ -36,27 +27,12 @@ def _build_dataframe(projects: list) -> pd.DataFrame:
             "Dates": p["dates"],
             "Resp. bureau": p["responsable_bureau"] or "—",
             "Resp. chantier": p["responsable_chantier"] or "—",
-            "📷": _dot(p["photo_available"]),
-            "🌐": _dot(p["online"]),
-            "📱": _dot(p["post_done"]),
+            "📷": p["photo_available"],
+            "🌐": p["online"],
+            "📱": p["post_done"],
+            "🔒": p["confidential"],
         })
     return pd.DataFrame(rows)
-
-
-def _style_dataframe(df: pd.DataFrame, projects: list):
-    def row_style(row):
-        p = projects[row.name]
-        color = theme.get_company_color(p["company"])
-        styles = [""] * len(row)
-        # Griser toute la ligne si confidentiel
-        if p["confidential"]:
-            styles = ["background-color: rgba(0,0,0,0.05); opacity: 0.55"] * len(row)
-        # Couleur de compagnie sur la cellule "Compagnie"
-        comp_idx = list(row.index).index("Compagnie")
-        styles[comp_idx] = f"background-color: {color}; color: white; font-weight: 600"
-        return styles
-
-    return df.style.apply(row_style, axis=1)
 
 
 def _render_stats(stats: dict):
@@ -109,44 +85,98 @@ def select_project(filtered: list, selected_rows: list):
     return filtered[idx]
 
 
-def build_edit_payload(photo_available, online, post_done, confidential,
-                        confidential_reason, notes, desc_en) -> dict:
-    """Build the Airtable PATCH payload for the edit panel. Only the editable fields;
-    confidentialReason is cleared when the project is not confidential."""
-    return {
-        "photoAvailable": photo_available,
-        "online": online,
-        "postDone": post_done,
-        "confidential": confidential,
-        "confidentialReason": confidential_reason if confidential else "",
-        "notes": notes,
-        "descEN": desc_en,
-    }
+INLINE_COLUMN_TO_FIELD = {
+    "📷": "photoAvailable",
+    "🌐": "online",
+    "📱": "postDone",
+    "🔒": "confidential",
+}
 
 
-def _render_edit_panel(project: dict):
+def compute_inline_updates(edited_rows: dict, filtered: list) -> list:
+    """Convertit le delta de st.data_editor en liste de (record_id, payload).
+
+    edited_rows : {position_ligne: {libellé_colonne: nouvelle_valeur}}.
+    N'inclut que les champs modifiés ; vide confidentialReason quand
+    confidential repasse à False ; ignore les index hors intervalle et les
+    colonnes non éditables."""
+    updates = []
+    for row_key, changes in edited_rows.items():
+        idx = int(row_key)
+        if idx < 0 or idx >= len(filtered):
+            continue
+        payload = {}
+        for col, value in changes.items():
+            field = INLINE_COLUMN_TO_FIELD.get(col)
+            if field is None:
+                continue
+            payload[field] = value
+            if field == "confidential" and value is False:
+                payload["confidentialReason"] = ""
+        if payload:
+            updates.append((filtered[idx]["id"], payload))
+    return updates
+
+
+def build_text_payload(notes: str, desc_en: str, reason: str) -> dict:
+    """Payload PATCH du panneau texte (Notes, Description EN, Raison)."""
+    return {"notes": notes, "descEN": desc_en, "confidentialReason": reason}
+
+
+def _on_inline_edit(editor_key: str, filtered: list) -> None:
+    """Callback on_change : envoie un PATCH Airtable par champ modifié.
+
+    Le message de résultat est stocké en session_state puis affiché dans
+    render() (les commandes d'affichage sont peu fiables dans un callback)."""
+    state = st.session_state.get(editor_key, {})
+    updates = compute_inline_updates(state.get("edited_rows", {}), filtered)
+    if not updates:
+        return
+    cfg = airtable_client.get_config()
+    errors = []
+    for rec_id, payload in updates:
+        try:
+            airtable_client.update_project(
+                cfg["pat"], cfg["base_id"], cfg["table_name"], rec_id, payload,
+            )
+        except Exception as e:  # noqa: BLE001
+            errors.append(str(e))
+    st.cache_data.clear()
+    if errors:
+        st.session_state["_inline_edit_msg"] = ("error", " ; ".join(errors))
+    else:
+        st.session_state["_inline_edit_msg"] = ("ok", "Modifications enregistrées ✅")
+
+
+def _render_text_panel(filtered: list) -> None:
     st.divider()
-    st.subheader(f"✏️ Édition — {project['project'] or project['project_no']}")
-    with st.form(key=f"edit_{project['id']}"):
-        c1, c2, c3 = st.columns(3)
-        photo = c1.checkbox("📷 Photo dispo", value=project["photo_available"])
-        online = c2.checkbox("🌐 En ligne", value=project["online"])
-        post = c3.checkbox("📱 Post fait", value=project["post_done"])
+    labels = ["— Choisir un projet —"] + [
+        f"{p['project'] or ('Projet #' + str(p['project_no']))} ({p['project_no']})"
+        for p in filtered
+    ]
+    choice = st.selectbox(
+        "✏️ Notes & description — choisir un projet",
+        range(len(labels)),
+        format_func=lambda i: labels[i],
+    )
+    project = select_project(filtered, [choice - 1]) if choice else None
+    if project is None:
+        return
 
-        conf = st.checkbox("🔒 Confidentiel (non-publiable)", value=project["confidential"])
-        reason = st.text_input("Raison", value=project["confidential_reason"])
+    st.subheader(f"✏️ Édition — {project['project'] or project['project_no']}")
+    with st.form(key=f"text_{project['id']}"):
+        reason = st.text_input("Raison (confidentialité)",
+                               value=project["confidential_reason"])
         notes = st.text_area("Notes", value=project["notes"])
         desc_en = st.text_area("Description (EN)", value=project["desc_en"])
-
         submitted = st.form_submit_button("💾 Enregistrer", type="primary")
 
     if submitted:
         cfg = airtable_client.get_config()
         try:
-            payload = build_edit_payload(photo, online, post, conf, reason, notes, desc_en)
+            payload = build_text_payload(notes, desc_en, reason)
             airtable_client.update_project(
-                cfg["pat"], cfg["base_id"], cfg["table_name"], project["id"],
-                payload,
+                cfg["pat"], cfg["base_id"], cfg["table_name"], project["id"], payload,
             )
             st.cache_data.clear()
             st.toast("Projet enregistré ✅")
@@ -164,6 +194,14 @@ def render():
         top[1].caption(f"👤 {user_name}")
     if top[2].button("Se déconnecter"):
         st.logout()
+
+    msg = st.session_state.pop("_inline_edit_msg", None)
+    if msg:
+        kind, text = msg
+        if kind == "ok":
+            st.toast(text)
+        else:
+            st.error(f"Erreur d'enregistrement : {text}")
 
     try:
         all_loaded = load_projects()
@@ -193,16 +231,23 @@ def render():
     df = _build_dataframe(filtered)
     sig = hash((filters["search"], filters["company"], filters["year_from"], filters["year_to"],
                 filters["without_photo"], filters["without_online"], filters["without_post"]))
-    event = st.dataframe(
-        _style_dataframe(df, filtered),
+    editor_key = f"projects_editor_{sig}"
+    st.data_editor(
+        df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        key=f"projects_table_{sig}",
+        num_rows="fixed",
+        key=editor_key,
+        disabled=["No", "Compagnie", "Projet", "Client", "Dates",
+                  "Resp. bureau", "Resp. chantier"],
+        column_config={
+            "📷": st.column_config.CheckboxColumn("📷", help="Photo dispo"),
+            "🌐": st.column_config.CheckboxColumn("🌐", help="En ligne"),
+            "📱": st.column_config.CheckboxColumn("📱", help="Post fait"),
+            "🔒": st.column_config.CheckboxColumn("🔒", help="Confidentiel"),
+        },
+        on_change=_on_inline_edit,
+        args=(editor_key, filtered),
     )
 
-    selected_rows = event.selection.rows if event and event.selection else []
-    project = select_project(filtered, selected_rows)
-    if project is not None:
-        _render_edit_panel(project)
+    _render_text_panel(filtered)
