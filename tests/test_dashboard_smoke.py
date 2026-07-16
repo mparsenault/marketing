@@ -1,5 +1,6 @@
 import airtable_client
 import dashboard
+from streamlit.proto.Arrow_pb2 import Arrow
 from streamlit.testing.v1 import AppTest
 
 
@@ -31,5 +32,11 @@ def test_dashboard_renders_table(monkeypatch):
     # 4 cartes de stats
     assert len(at.metric) == 4
     assert any(m.label == "📁 Total projets" for m in at.metric)
-    # Le tableau est rendu
+    # Le tableau éditable est rendu.
+    # NB : cette version de Streamlit (1.50.0, la plus récente publiée) ne
+    # distingue pas st.data_editor de st.dataframe dans AppTest — les deux
+    # apparaissent comme des éléments "arrow_data_frame" sous `at.dataframe`.
+    # On vérifie donc l'édition via le champ proto `editing_mode`, qui vaut
+    # READ_ONLY pour st.dataframe et FIXED/DYNAMIC pour st.data_editor.
     assert len(at.dataframe) == 1
+    assert at.dataframe[0].proto.editing_mode != Arrow.EditingMode.READ_ONLY
