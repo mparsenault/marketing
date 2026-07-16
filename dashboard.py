@@ -109,19 +109,42 @@ def select_project(filtered: list, selected_rows: list):
     return filtered[idx]
 
 
-def build_edit_payload(photo_available, online, post_done, confidential,
-                        confidential_reason, notes, desc_en) -> dict:
-    """Build the Airtable PATCH payload for the edit panel. Only the editable fields;
-    confidentialReason is cleared when the project is not confidential."""
-    return {
-        "photoAvailable": photo_available,
-        "online": online,
-        "postDone": post_done,
-        "confidential": confidential,
-        "confidentialReason": confidential_reason if confidential else "",
-        "notes": notes,
-        "descEN": desc_en,
-    }
+INLINE_COLUMN_TO_FIELD = {
+    "📷": "photoAvailable",
+    "🌐": "online",
+    "📱": "postDone",
+    "🔒": "confidential",
+}
+
+
+def compute_inline_updates(edited_rows: dict, filtered: list) -> list:
+    """Convertit le delta de st.data_editor en liste de (record_id, payload).
+
+    edited_rows : {position_ligne: {libellé_colonne: nouvelle_valeur}}.
+    N'inclut que les champs modifiés ; vide confidentialReason quand
+    confidential repasse à False ; ignore les index hors intervalle et les
+    colonnes non éditables."""
+    updates = []
+    for row_key, changes in edited_rows.items():
+        idx = int(row_key)
+        if idx < 0 or idx >= len(filtered):
+            continue
+        payload = {}
+        for col, value in changes.items():
+            field = INLINE_COLUMN_TO_FIELD.get(col)
+            if field is None:
+                continue
+            payload[field] = value
+            if field == "confidential" and value is False:
+                payload["confidentialReason"] = ""
+        if payload:
+            updates.append((filtered[idx]["id"], payload))
+    return updates
+
+
+def build_text_payload(notes: str, desc_en: str, reason: str) -> dict:
+    """Payload PATCH du panneau texte (Notes, Description EN, Raison)."""
+    return {"notes": notes, "descEN": desc_en, "confidentialReason": reason}
 
 
 def _render_edit_panel(project: dict):

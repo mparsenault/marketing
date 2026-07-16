@@ -26,30 +26,56 @@ def test_select_project_valid_index_returns_project():
     assert dashboard.select_project(filtered, [1]) == {"id": "rec2"}
 
 
-# --- build_edit_payload -----------------------------------------------------
+# --- compute_inline_updates -------------------------------------------------
 
-def test_build_edit_payload_has_exactly_editable_fields():
-    payload = dashboard.build_edit_payload(
-        True, False, True, False, "", "some notes", "some desc"
-    )
-    assert set(payload.keys()) == set(airtable_client.EDITABLE_FIELDS)
-    assert set(payload.keys()) == {
-        "photoAvailable", "online", "postDone",
-        "confidential", "confidentialReason", "notes", "descEN",
-    }
+def _projects():
+    return [{"id": "rec1"}, {"id": "rec2"}, {"id": "rec3"}]
 
 
-def test_build_edit_payload_keeps_reason_when_confidential():
-    payload = dashboard.build_edit_payload(
-        True, True, False, True, "NDA client", "notes", "desc"
-    )
-    assert payload["confidential"] is True
-    assert payload["confidentialReason"] == "NDA client"
+def test_compute_inline_updates_empty_delta_returns_empty():
+    assert dashboard.compute_inline_updates({}, _projects()) == []
 
 
-def test_build_edit_payload_clears_reason_when_not_confidential():
-    payload = dashboard.build_edit_payload(
-        True, True, False, False, "leftover reason text", "notes", "desc"
-    )
-    assert payload["confidential"] is False
-    assert payload["confidentialReason"] == ""
+def test_compute_inline_updates_single_checkbox_one_field():
+    updates = dashboard.compute_inline_updates({0: {"🌐": True}}, _projects())
+    assert updates == [("rec1", {"online": True})]
+
+
+def test_compute_inline_updates_maps_all_labels():
+    edited = {1: {"📷": True, "📱": False}}
+    updates = dashboard.compute_inline_updates(edited, _projects())
+    assert updates == [("rec2", {"photoAvailable": True, "postDone": False})]
+
+
+def test_compute_inline_updates_confidential_false_clears_reason():
+    updates = dashboard.compute_inline_updates({0: {"🔒": False}}, _projects())
+    assert updates == [("rec1", {"confidential": False, "confidentialReason": ""})]
+
+
+def test_compute_inline_updates_confidential_true_keeps_reason_untouched():
+    updates = dashboard.compute_inline_updates({0: {"🔒": True}}, _projects())
+    assert updates == [("rec1", {"confidential": True})]
+
+
+def test_compute_inline_updates_out_of_range_index_ignored():
+    assert dashboard.compute_inline_updates({9: {"🌐": True}}, _projects()) == []
+
+
+def test_compute_inline_updates_unknown_column_ignored():
+    assert dashboard.compute_inline_updates({0: {"Projet": "x"}}, _projects()) == []
+
+
+def test_compute_inline_updates_multiple_rows():
+    edited = {0: {"🌐": True}, 2: {"📱": True}}
+    updates = dashboard.compute_inline_updates(edited, _projects())
+    assert ("rec1", {"online": True}) in updates
+    assert ("rec3", {"postDone": True}) in updates
+    assert len(updates) == 2
+
+
+# --- build_text_payload -----------------------------------------------------
+
+def test_build_text_payload_has_exactly_text_fields():
+    payload = dashboard.build_text_payload("mes notes", "my desc", "NDA")
+    assert payload == {"notes": "mes notes", "descEN": "my desc",
+                       "confidentialReason": "NDA"}
