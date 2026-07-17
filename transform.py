@@ -50,7 +50,7 @@ def record_to_project(record: dict) -> dict:
         "approuve_par": f.get("ApprouvéPar", "") or "",
         "date_approbation": f.get("DateApprobation", "") or "",
         "raison_rejet": f.get("RaisonRejet", "") or "",
-        "lien_photos": f.get("LienPhotosSharePoint", "") or "",
+        "lien_photos": f.get("sharepointUrl", "") or "",
     }
 
 
