@@ -82,7 +82,7 @@ C** (publication), pas ici.
 
 | Champ | Type | Détail |
 |---|---|---|
-| `StatutPublication` | Single select | Options : `À rédiger`, `En attente d'approbation`, `Approuvé`, `Publié`, `Rejeté` |
+| `StatutPublication` | Single select | Options : `À rédiger`, `En attente d'approbation`, `Approuvé`, `Publié`. (Pas de statut `Rejeté` : un rejet renvoie à `À rédiger`, voir cycle de vie.) |
 | `BrouillonPost` | Long text | Texte du post réseaux (rempli par Hermès en B ; manuellement pour tester A) |
 | `BrouillonDescFR` | Long text | Brouillon description FR |
 | `BrouillonDescEN` | Long text | Brouillon description EN |
@@ -98,12 +98,16 @@ Airtable.
 ## Cycle de vie et transitions
 
 ```
-(vide) --auto--> À rédiger --[« Envoyer pour approbation » (dashboard)]--> En attente d'approbation
-                                                     |  → DM Teams (Graph) au responsable, avec lien ?record=
-                                Approuver <----(page d'approbation Streamlit)----> Rejeter
-                                Approuvé                                           Rejeté (+RaisonRejet)
-                                   | [publie C]
-                                Publié
+(vide) --auto--> À rédiger <---------------------[Rejeter (+RaisonRejet)]------------------+
+                    |                                                                      |
+                    | « Envoyer pour approbation » (dashboard)                             |
+                    v  → DM Teams (Graph) au responsable, avec lien ?record=               |
+              En attente d'approbation --(page d'approbation Streamlit)--> Approuver       |
+                    |                                                          |           |
+                    +----------------------------------------------------------+-----------+
+                                                       Approuvé
+                                                          | [publie C]
+                                                       Publié
 ```
 
 - **Entrée automatique** — automatisation Airtable qui met `StatutPublication =
@@ -119,12 +123,14 @@ Airtable.
   lien `?record=<id>`.
 - **Approuver** (page d'approbation) : `StatutPublication = Approuvé`,
   `ApprouvéPar = st.user.email`, `DateApprobation = aujourd'hui`.
-- **Rejeter** (page d'approbation) : `StatutPublication = Rejeté`,
-  `RaisonRejet = <saisie>`.
+- **Rejeter** (page d'approbation) : `StatutPublication = À rédiger`,
+  `RaisonRejet = <saisie>`. Le brouillon (non vidé) et la `RaisonRejet`
+  restent en place comme feedback pour la reprise.
 - **Approuvé → Publié** : fait par Hermès (C). Hors périmètre A.
 
-Après rejet, le projet reste `Rejeté` avec sa `RaisonRejet` (pas de retour
-automatique à `À rédiger` ; la reprise relève de B).
+Après rejet, le projet revient à `À rédiger` (avec sa `RaisonRejet`), prêt à
+être révisé puis renvoyé pour approbation. Comme ses brouillons ne sont pas
+vides, l'automatisation d'entrée `À rédiger` ne le retouche pas.
 
 ## Action « Envoyer pour approbation » (dashboard, onglet Projets)
 
@@ -146,7 +152,7 @@ appellera la même logique.
   (texte, informatif).
 - Deux actions :
   - **Approuver** → payload `Approuvé` + `ApprouvéPar` + `DateApprobation`.
-  - **Rejeter** → saisie d'une raison → payload `Rejeté` + `RaisonRejet`.
+  - **Rejeter** → saisie d'une raison → payload `À rédiger` + `RaisonRejet`.
 - Cas limites gérés : `record` absent/inconnu → message d'erreur clair ; statut
   déjà traité (≠ `En attente d'approbation`) → afficher l'état sans reproposer
   les boutons.
@@ -226,8 +232,9 @@ Logique pure isolée du rendu Streamlit, comme les fonctions existantes
   approbation » → `En attente d'approbation` **et** le bon responsable reçoit un
   DM Teams avec le lien ; ouvrir le lien → page d'approbation d'un seul
   brouillon (pas le dashboard) ; Approuver → `Approuvé` avec
-  `ApprouvéPar`/`DateApprobation` ; sur un autre, Rejeter avec motif → `Rejeté` +
-  `RaisonRejet` ; un projet confidentiel ne passe jamais à `À rédiger`.
+  `ApprouvéPar`/`DateApprobation` ; sur un autre, Rejeter avec motif → retour à
+  `À rédiger` + `RaisonRejet` (brouillon conservé) ; un projet confidentiel ne
+  passe jamais à `À rédiger`.
 - `pytest` passe (tests existants + nouveaux modules).
 
 ## Hors périmètre (YAGNI)
