@@ -159,7 +159,7 @@ def test_record_to_project_maps_approval_fields():
         "ResponsableBureauEmail": "resp@elem.global",
         "ApprouvéPar": "chef@elem.global", "DateApprobation": "2026-07-17",
         "RaisonRejet": "trop court",
-        "LienPhotosSharePoint": "https://sp/24-01",
+        "sharepointUrl": "https://sp/24-01",
     }}
     p = transform.record_to_project(rec)
     assert p["statut_publication"] == "En attente d'approbation"

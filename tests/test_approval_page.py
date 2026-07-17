@@ -9,7 +9,7 @@ def _pending_record():
         "StatutPublication": "En attente d'approbation",
         "BrouillonPost": "Un super post", "BrouillonDescFR": "desc fr",
         "BrouillonDescEN": "desc en", "ResponsableBureau": "Jean Tremblay",
-        "LienPhotosSharePoint": "https://sp/24-01",
+        "sharepointUrl": "https://sp/24-01",
     }}
 
 

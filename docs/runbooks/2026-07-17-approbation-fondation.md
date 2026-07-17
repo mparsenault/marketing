@@ -7,8 +7,9 @@
 - `ApprouvéPar` — Single line text.
 - `DateApprobation` — Date.
 - `RaisonRejet` — Long text.
-- `LienPhotosSharePoint` — Formula : `CONCATENATE("<BASE_SHAREPOINT>/", {Project_No})`
-  (remplacer `<BASE_SHAREPOINT>` par l'URL réelle du site SharePoint).
+- Lien photos : **réutiliser le champ `sharepointUrl` existant** (URL) — aucun
+  champ à créer. Le code lit `sharepointUrl` comme lien photos sur la page
+  d'approbation.
 
 ## 2. Automatisation d'entrée « À rédiger »
 - Déclencheur : When record matches conditions.

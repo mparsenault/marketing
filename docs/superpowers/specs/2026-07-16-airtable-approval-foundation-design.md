@@ -90,7 +90,11 @@ C** (publication), pas ici.
 | `ApprouvéPar` | Single line text | Email de l'approbateur, écrit par le dashboard (`st.user.email`) à l'approbation (audit). |
 | `DateApprobation` | Date | Écrite par le dashboard à l'approbation (audit). |
 | `RaisonRejet` | Long text | Motif du rejet, saisi par l'approbateur sur la page d'approbation. |
-| `LienPhotosSharePoint` | Formula | `base_url & Project_No` — un dossier SharePoint par `Project_No`. `base_url` déterminé depuis le site SharePoint réel (runbook). |
+
+Lien photos : on **réutilise le champ `sharepointUrl` existant** (type URL, déjà
+présent sur la table) plutôt que de créer un champ formule. `record_to_project`
+mappe `sharepointUrl → lien_photos`, que la page d'approbation affiche comme lien
+cliquable. Aucun nouveau champ, aucune `base_url` à gérer.
 
 Aucun champ « collaborateur » : personne du côté responsables n'est invité dans
 Airtable.
@@ -148,8 +152,8 @@ appellera la même logique.
 - Gardée par le SSO `@elem.global` (même mécanisme que le dashboard).
 - Charge l'unique enregistrement `record`. Affiche : `Project_No`,
   `NomDuProjet`, `Client`, `BrouillonPost`, `BrouillonDescFR`,
-  `BrouillonDescEN`, `LienPhotosSharePoint` (cliquable), et `ResponsableBureau`
-  (texte, informatif).
+  `BrouillonDescEN`, `sharepointUrl` (lien photos cliquable), et
+  `ResponsableBureau` (texte, informatif).
 - Deux actions :
   - **Approuver** → payload `Approuvé` + `ApprouvéPar` + `DateApprobation`.
   - **Rejeter** → saisie d'une raison → payload `À rédiger` + `RaisonRejet`.
