@@ -6,6 +6,8 @@ import pandas as pd
 import streamlit as st
 
 import airtable_client
+import approvals
+import notifications
 import transform
 
 
@@ -123,6 +125,21 @@ def build_text_payload(notes: str, desc_en: str, reason: str) -> dict:
     return {"notes": notes, "descEN": desc_en, "confidentialReason": reason}
 
 
+def send_for_approval(project: dict) -> None:
+    """Passe le projet en attente d'approbation et notifie le responsable."""
+    cfg = airtable_client.get_config()
+    airtable_client.update_project(
+        cfg["pat"], cfg["base_id"], cfg["table_name"],
+        project["id"], approvals.build_pending_payload())
+    st.cache_data.clear()
+    graph = notifications.get_graph_config()
+    link = notifications.build_approval_link(graph["base_app_url"], project["id"])
+    html = notifications.build_message(
+        project["project_no"], project["project"] or project["project_no"],
+        (project["brouillon_post"] or "")[:200], link)
+    notifications.send_approval_request(project["responsable_bureau_email"], html)
+
+
 def _on_inline_edit(editor_key: str, filtered: list) -> None:
     """Callback on_change : envoie un PATCH Airtable par champ modifié.
 
@@ -183,6 +200,18 @@ def _render_text_panel(filtered: list) -> None:
             st.rerun()
         except Exception as e:  # noqa: BLE001
             st.error(f"Erreur d'enregistrement : {e}")
+
+    st.divider()
+    if not project.get("responsable_bureau_email"):
+        st.caption("⚠️ ResponsableBureauEmail manquant — impossible d'envoyer "
+                   "pour approbation (voir migration).")
+    elif st.button("📤 Envoyer pour approbation", key=f"send_{project['id']}"):
+        try:
+            send_for_approval(project)
+            st.toast("Envoyé pour approbation ✅")
+            st.rerun()
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Échec de l'envoi pour approbation : {e}")
 
 
 def render():

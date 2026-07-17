@@ -79,3 +79,28 @@ def test_build_text_payload_has_exactly_text_fields():
     payload = dashboard.build_text_payload("mes notes", "my desc", "NDA")
     assert payload == {"notes": "mes notes", "descEN": "my desc",
                        "confidentialReason": "NDA"}
+
+
+# --- send_for_approval -------------------------------------------------------
+
+def test_send_for_approval_sets_status_then_notifies(monkeypatch):
+    import dashboard
+    import notifications
+    calls = {}
+    monkeypatch.setattr(airtable_client, "get_config",
+                        lambda: {"pat": "x", "base_id": "app", "table_name": "Projets"})
+    monkeypatch.setattr(airtable_client, "update_project",
+                        lambda pat, base_id, table_name, rec_id, payload:
+                        calls.setdefault("update", (rec_id, payload)))
+    monkeypatch.setattr(notifications, "get_graph_config",
+                        lambda: {"base_app_url": "https://app"})
+    monkeypatch.setattr(notifications, "send_approval_request",
+                        lambda email, html: calls.setdefault("notify", (email, html)))
+
+    project = {"id": "rec1", "project_no": "24-01", "project": "Usine X",
+               "brouillon_post": "Un post", "responsable_bureau_email": "r@elem.global"}
+    dashboard.send_for_approval(project)
+
+    assert calls["update"] == ("rec1", {"StatutPublication": "En attente d'approbation"})
+    assert calls["notify"][0] == "r@elem.global"
+    assert "https://app/?record=rec1" in calls["notify"][1]
