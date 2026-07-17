@@ -5,6 +5,7 @@ dans des fonctions privées monkeypatchables. Voir le runbook pour l'inscription
 d'app Azure AD et les permissions Graph.
 """
 
+import html
 import os
 
 import requests
@@ -20,9 +21,11 @@ def build_approval_link(base_app_url: str, record_id: str) -> str:
 def build_message(project_no: str, project_name: str,
                   post_excerpt: str, link: str) -> str:
     return (
-        f"<p><b>Brouillon à approuver — {project_no} · {project_name}</b></p>"
-        f"<p>{post_excerpt}</p>"
-        f'<p><a href="{link}">Ouvrir la page d\'approbation</a></p>'
+        f"<p><b>Brouillon à approuver — "
+        f"{html.escape(project_no)} · {html.escape(project_name)}</b></p>"
+        f"<p>{html.escape(post_excerpt)}</p>"
+        f'<p><a href="{html.escape(link, quote=True)}">'
+        f"Ouvrir la page d'approbation</a></p>"
     )
 
 

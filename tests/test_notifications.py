@@ -27,14 +27,16 @@ def test_send_approval_request_orchestrates(monkeypatch):
         "sender_id": "sender-guid", "base_app_url": "https://app"})
     monkeypatch.setattr(notifications, "_graph_token", lambda cfg: "tok")
     monkeypatch.setattr(notifications, "_create_chat",
-                        lambda token, sender_id, email: calls.append(("chat", email)) or "chat1")
+                        lambda token, sender_id, email: calls.append(("chat", token, email)) or "chat1")
     monkeypatch.setattr(notifications, "_post_message",
-                        lambda token, chat_id, html: calls.append(("msg", chat_id, html)))
+                        lambda token, chat_id, html: calls.append(("msg", token, chat_id, html)))
 
     notifications.send_approval_request("resp@elem.global", "<p>hello</p>")
 
-    assert ("chat", "resp@elem.global") in calls
-    assert ("msg", "chat1", "<p>hello</p>") in calls
+    assert calls == [
+        ("chat", "tok", "resp@elem.global"),
+        ("msg", "tok", "chat1", "<p>hello</p>"),
+    ]
 
 
 def test_graph_token_parses_access_token(monkeypatch):
