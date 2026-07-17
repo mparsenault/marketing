@@ -9,6 +9,9 @@ import requests
 EDITABLE_FIELDS = [
     "photoAvailable", "online", "postDone",
     "confidential", "confidentialReason", "notes", "descEN",
+    # Cycle de vie brouillon → approbation (sous-projet A)
+    "StatutPublication", "BrouillonPost", "BrouillonDescFR", "BrouillonDescEN",
+    "ResponsableBureauEmail", "ApprouvéPar", "DateApprobation", "RaisonRejet",
 ]
 
 _RATE_SLEEP = 0.22  # ~4.5 req/s, sous la limite Airtable de 5/s
@@ -62,6 +65,14 @@ def fetch_projects(pat: str, base_id: str, table_name: str) -> list:
             break
         time.sleep(_RATE_SLEEP)
     return records
+
+
+def fetch_project(pat: str, base_id: str, table_name: str, record_id: str) -> dict:
+    """Lit un seul enregistrement par id (page d'approbation)."""
+    url = f"{_table_url(base_id, table_name)}/{record_id}"
+    r = requests.get(url, headers=_headers(pat), timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
 
 
 def update_project(pat: str, base_id: str, table_name: str,

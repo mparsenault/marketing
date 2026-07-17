@@ -42,6 +42,15 @@ def record_to_project(record: dict) -> dict:
         "confidential_reason": f.get("confidentialReason", "") or "",
         "notes": f.get("notes", "") or "",
         "desc_en": f.get("descEN", "") or "",
+        "statut_publication": f.get("StatutPublication", "") or "",
+        "brouillon_post": f.get("BrouillonPost", "") or "",
+        "brouillon_desc_fr": f.get("BrouillonDescFR", "") or "",
+        "brouillon_desc_en": f.get("BrouillonDescEN", "") or "",
+        "responsable_bureau_email": f.get("ResponsableBureauEmail", "") or "",
+        "approuve_par": f.get("ApprouvéPar", "") or "",
+        "date_approbation": f.get("DateApprobation", "") or "",
+        "raison_rejet": f.get("RaisonRejet", "") or "",
+        "lien_photos": f.get("LienPhotosSharePoint", "") or "",
     }
 
 

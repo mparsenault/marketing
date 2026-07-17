@@ -149,3 +149,31 @@ def test_company_and_year_options():
     ]
     assert transform.company_options(projects) == ["Elem", "Ondel"]
     assert transform.year_options(projects) == [2022, 2024]
+
+
+def test_record_to_project_maps_approval_fields():
+    rec = {"id": "rec1", "fields": {
+        "StatutPublication": "En attente d'approbation",
+        "BrouillonPost": "Un super post",
+        "BrouillonDescFR": "desc fr", "BrouillonDescEN": "desc en",
+        "ResponsableBureauEmail": "resp@elem.global",
+        "ApprouvéPar": "chef@elem.global", "DateApprobation": "2026-07-17",
+        "RaisonRejet": "trop court",
+        "LienPhotosSharePoint": "https://sp/24-01",
+    }}
+    p = transform.record_to_project(rec)
+    assert p["statut_publication"] == "En attente d'approbation"
+    assert p["brouillon_post"] == "Un super post"
+    assert p["brouillon_desc_fr"] == "desc fr"
+    assert p["brouillon_desc_en"] == "desc en"
+    assert p["responsable_bureau_email"] == "resp@elem.global"
+    assert p["approuve_par"] == "chef@elem.global"
+    assert p["date_approbation"] == "2026-07-17"
+    assert p["raison_rejet"] == "trop court"
+    assert p["lien_photos"] == "https://sp/24-01"
+
+
+def test_record_to_project_approval_fields_default_empty():
+    p = transform.record_to_project({"id": "rec1", "fields": {}})
+    assert p["statut_publication"] == ""
+    assert p["lien_photos"] == ""
