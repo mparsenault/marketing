@@ -1,35 +1,61 @@
-# Sous-projet A — Fondation Airtable + approbation — Design
+# Sous-projet A — Fondation Airtable + approbation via lien Teams — Design
 
 Date : 2026-07-16
+Révisé : 2026-07-17 — Streamlit conservé comme cœur ; approbation sur une page
+Streamlit à enregistrement unique, atteinte par un lien envoyé en DM Teams
+(Microsoft Graph) au responsable bureau. Abandon du pivot M365/Power Automate
+(qui faisait toute l'approbation hors app) et de l'Interface Airtable.
 
 ## Contexte et pivot
 
-Le dépôt contenait une app Streamlit (portée d'un Next.js) : une vue filtrée +
+Le dépôt contient une app Streamlit (portée d'un Next.js) : une vue filtrée +
 éditable des projets Airtable, protégée par SSO Microsoft Entra restreint à
-`@elem.global`. Sa raison d'être principale était le **contrôle d'accès** (donner
-un accès sans siège Airtable).
+`@elem.global`. Sa raison d'être : donner un accès sans siège Airtable.
 
-Le vrai objectif visé est différent : un **workflow de publication**. Un agent IA
+Le vrai objectif visé est un **workflow de publication**. Un agent IA
 (« Hermès », à construire) rédige les publications des fiches projet ; le
 **responsable bureau** de chaque projet doit approuver les brouillons avant
 publication sur les réseaux sociaux et le site web.
 
 Le projet global se découpe en trois sous-projets :
-- **A (ce spec)** — Fondation Airtable + approbation (statuts, Interface, notif). Retrait de Streamlit.
+- **A (ce spec)** — Fondation Airtable + approbation dans Streamlit.
 - **B** — Agent Hermès : génération des brouillons (post + descriptions), accès aux photos SharePoint.
 - **C** — Auto-publication (réseaux LinkedIn/Meta, site).
 
-Comme l'approbation se fait très bien dans une **Interface Airtable** (et que les
-1-2 responsables bureau auront un siège Airtable), l'app Streamlit devient
-redondante et est retirée dans ce sous-projet.
+### Choix retenu : approbation dans Streamlit, notification par lien Teams
+
+Décisions structurantes (brainstorming du 2026-07-17) :
+
+- **Streamlit reste le cœur.** L'app n'est pas retirée. On l'étend.
+- L'**approbation** se fait sur une **page Streamlit à enregistrement unique**,
+  gardée par le SSO `@elem.global` existant. Tout utilisateur `@elem.global`
+  connecté qui détient le lien peut approuver (pas de contrôle de rôle strict en
+  phase A).
+- Le responsable bureau reçoit un **message direct Teams** contenant un résumé
+  du brouillon et le **lien** vers sa page d'approbation. Le DM est envoyé via
+  **Microsoft Graph depuis du code** (module Python), pas via Power Automate ni
+  l'action Teams native d'Airtable (qui ne poste qu'en canal).
+- **Cloisonnement souple** : `?record=recXXX` affiche la page d'approbation ;
+  la racine affiche le dashboard. Pas de blocage dur — un responsable pourrait
+  techniquement atteindre le dashboard en retirant le paramètre ; c'est accepté
+  en phase A.
 
 ## Objectif du sous-projet A
 
-Mettre en place, dans Airtable, le socle du cycle de vie « brouillon →
-approbation → publié » et l'écran d'approbation du responsable bureau — **sans**
-encore d'agent Hermès ni de publication automatique. À la fin de A, on peut
-simuler manuellement un brouillon en attente et vérifier tout le flux
-d'approbation de bout en bout.
+Mettre en place le socle du cycle de vie « brouillon → approbation → publié »
+côté Airtable, la page d'approbation Streamlit et la notification Teams —
+**sans** encore d'agent Hermès ni de publication automatique. À la fin de A, on
+peut, depuis le dashboard, envoyer manuellement un brouillon pour approbation et
+vérifier tout le flux (DM Teams → page → statut réécrit) de bout en bout.
+
+## Deux surfaces dans la même app (`app.py`)
+
+- **Racine (`/`)** → **dashboard** (onglet Projets existant), usage marketing.
+- **`/?record=recXXX`** → **page d'approbation** affichant *ce seul* brouillon,
+  gardée par SSO `@elem.global`.
+
+Le routage est décidé par la présence du paramètre `record` dans
+`st.query_params`.
 
 ## Modèle de données (table Projets)
 
@@ -57,115 +83,161 @@ C** (publication), pas ici.
 | Champ | Type | Détail |
 |---|---|---|
 | `StatutPublication` | Single select | Options : `À rédiger`, `En attente d'approbation`, `Approuvé`, `Publié`, `Rejeté` |
-| `BrouillonPost` | Long text | Texte du post réseaux (rempli par Hermès en B) |
+| `BrouillonPost` | Long text | Texte du post réseaux (rempli par Hermès en B ; manuellement pour tester A) |
 | `BrouillonDescFR` | Long text | Brouillon description FR |
 | `BrouillonDescEN` | Long text | Brouillon description EN |
-| `ResponsableBureauUser` | Collaborator | Cible du routage/notif. Peuplé depuis le texte `ResponsableBureau` existant (voir Migration). Le champ texte `ResponsableBureau` reste (non destructif). |
-| `ApprouvéPar` | Collaborator | Rempli à l'approbation (audit) |
-| `DateApprobation` | Date | Remplie à l'approbation (audit) |
-| `RaisonRejet` | Long text | Feedback du responsable en cas de rejet |
-| `LienPhotosSharePoint` | Formula | `base_url & Project_No` — un dossier SharePoint par `Project_No`. `base_url` est une constante à déterminer depuis le site SharePoint réel (runbook). |
+| `ResponsableBureauEmail` | Email | Adresse `@elem.global` du responsable, cible du DM Teams. Peuplé depuis le texte `ResponsableBureau` (voir Migration). Le champ texte reste. |
+| `ApprouvéPar` | Single line text | Email de l'approbateur, écrit par le dashboard (`st.user.email`) à l'approbation (audit). |
+| `DateApprobation` | Date | Écrite par le dashboard à l'approbation (audit). |
+| `RaisonRejet` | Long text | Motif du rejet, saisi par l'approbateur sur la page d'approbation. |
+| `LienPhotosSharePoint` | Formula | `base_url & Project_No` — un dossier SharePoint par `Project_No`. `base_url` déterminé depuis le site SharePoint réel (runbook). |
 
-Les champs existants (`descFR`, `descEN`, `postDone`, `online`, `confidential`,
-`ResponsableBureau`, `Project_No`, etc.) sont conservés.
+Aucun champ « collaborateur » : personne du côté responsables n'est invité dans
+Airtable.
 
 ## Cycle de vie et transitions
 
 ```
-(vide) --auto--> À rédiger --[Hermès B]--> En attente d'approbation
-                                                |
-                          responsable Approuver |  responsable Rejeter
-                                                v                     \
-                                            Approuvé --[publie C]--> Publié
-                                                                      Rejeté --(retour rédaction)
+(vide) --auto--> À rédiger --[« Envoyer pour approbation » (dashboard)]--> En attente d'approbation
+                                                     |  → DM Teams (Graph) au responsable, avec lien ?record=
+                                Approuver <----(page d'approbation Streamlit)----> Rejeter
+                                Approuvé                                           Rejeté (+RaisonRejet)
+                                   | [publie C]
+                                Publié
 ```
 
-- **Entrée automatique** — une automatisation Airtable met `StatutPublication =
+- **Entrée automatique** — automatisation Airtable qui met `StatutPublication =
   À rédiger` quand **toutes** ces conditions sont vraies : `StatutPublication`
   vide **ET** `BrouillonPost` vide **ET** `BrouillonDescFR` vide **ET**
   `BrouillonDescEN` vide **ET** `postDone = false` **ET** `confidential = false`.
-  Les projets confidentiels ou déjà postés restent hors pipeline (statut vide).
-- **À rédiger → En attente d'approbation** : fait par Hermès (B) après avoir
-  rempli les brouillons. En sous-projet A, se teste **manuellement**.
-- **En attente → Approuvé** : bouton Approuver de l'Interface. Remplit
-  `ApprouvéPar` (utilisateur courant) et `DateApprobation` (aujourd'hui).
-- **En attente → Rejeté** : bouton Rejeter. Demande `RaisonRejet`.
+  Les projets confidentiels ou déjà postés restent hors pipeline.
+- **À rédiger → En attente d'approbation** : en phase A, déclenché par l'action
+  **« Envoyer pour approbation »** du dashboard (voir plus bas). En B, Hermès
+  reprend ce déclencheur après avoir rempli les brouillons.
+- **En attente → notification** : l'action ci-dessus appelle le module de
+  notification Graph, qui envoie le DM Teams au `ResponsableBureauEmail` avec le
+  lien `?record=<id>`.
+- **Approuver** (page d'approbation) : `StatutPublication = Approuvé`,
+  `ApprouvéPar = st.user.email`, `DateApprobation = aujourd'hui`.
+- **Rejeter** (page d'approbation) : `StatutPublication = Rejeté`,
+  `RaisonRejet = <saisie>`.
 - **Approuvé → Publié** : fait par Hermès (C). Hors périmètre A.
 
-## Interface Airtable d'approbation
+Après rejet, le projet reste `Rejeté` avec sa `RaisonRejet` (pas de retour
+automatique à `À rédiger` ; la reprise relève de B).
 
-- Page liste **« Brouillons à approuver »**, filtrée sur `StatutPublication =
-  En attente d'approbation` **ET** `ResponsableBureauUser = utilisateur courant`
-  (chaque responsable ne voit que ses projets).
-- Vue détail d'un enregistrement : `Project_No`, `NomDuProjet`, `Entreprise`,
-  `Client`, `BrouillonPost`, `BrouillonDescFR`, `BrouillonDescEN`,
-  `LienPhotosSharePoint` (cliquable → dossier photos).
-- Deux boutons d'action :
-  - **Approuver** → `StatutPublication = Approuvé`, `ApprouvéPar = utilisateur
-    courant`, `DateApprobation = aujourd'hui`.
-  - **Rejeter** → `StatutPublication = Rejeté` ; l'utilisateur saisit
-    `RaisonRejet`.
+## Action « Envoyer pour approbation » (dashboard, onglet Projets)
 
-## Automatisation de notification
+Sur un projet sélectionné dont les brouillons sont remplis :
+1. Écrit `StatutPublication = En attente d'approbation` (PATCH Airtable).
+2. Appelle `notifications.send_approval_request(email, lien, résumé)` où
+   `email = ResponsableBureauEmail`, `lien = base_app_url + "?record=" + id`.
+3. `st.cache_data.clear()` + retour visuel (toast / message).
 
-Déclencheur : `StatutPublication` devient `En attente d'approbation`.
-Action : envoyer un email (automatisation Airtable) au `ResponsableBureauUser` du
-projet, contenant `Project_No`, `NomDuProjet`, un extrait du `BrouillonPost`, et
-le lien vers l'Interface d'approbation.
+C'est le déclencheur testable de phase A qui remplace Hermès. En B, Hermès
+appellera la même logique.
 
-## Migration `ResponsableBureau` texte → collaborateur
+## Page d'approbation Streamlit (`?record=recXXX`)
 
-`ResponsableBureau` est aujourd'hui du texte libre. Pour le routage/notif il faut
-`ResponsableBureauUser` (collaborateur).
+- Gardée par le SSO `@elem.global` (même mécanisme que le dashboard).
+- Charge l'unique enregistrement `record`. Affiche : `Project_No`,
+  `NomDuProjet`, `Client`, `BrouillonPost`, `BrouillonDescFR`,
+  `BrouillonDescEN`, `LienPhotosSharePoint` (cliquable), et `ResponsableBureau`
+  (texte, informatif).
+- Deux actions :
+  - **Approuver** → payload `Approuvé` + `ApprouvéPar` + `DateApprobation`.
+  - **Rejeter** → saisie d'une raison → payload `Rejeté` + `RaisonRejet`.
+- Cas limites gérés : `record` absent/inconnu → message d'erreur clair ; statut
+  déjà traité (≠ `En attente d'approbation`) → afficher l'état sans reproposer
+  les boutons.
 
-1. Inviter chaque responsable bureau comme collaborateur de la base (leur siège).
-2. Établir une table de correspondance `nom texte → identifiant utilisateur Airtable`.
-3. Script de migration (voir plan) qui lit chaque projet, et écrit
-   `ResponsableBureauUser` d'après la correspondance. Les noms non mappés sont
+## Notification Teams (Microsoft Graph, `notifications.py`)
+
+- Fonction I/O `send_approval_request(email, lien, résumé)` : envoie un DM Teams
+  au destinataire via l'API Graph (`ChatMessage.Send`).
+- Helpers **purs, testés** : construction du lien `?record=` à partir de
+  `base_app_url` + id, et construction du corps du message (titre, extrait du
+  post, lien).
+- Requiert une **inscription d'app Azure AD** ; les secrets (client id/secret,
+  tenant) sont lus depuis la config/variables d'environnement.
+
+**Risque à valider au démarrage** (analogue au risque « connecteur premium » de
+l'ancien design) : l'envoi d'un DM 1:1 en *app-only* passe par une API Graph
+protégée, qui peut exiger une demande d'approbation Microsoft. Alternatives à
+trancher au runbook si l'app-only n'est pas disponible : jeton **délégué** via
+un compte de service, ou **repli e-mail Outlook** (`Mail.Send`) portant le même
+lien `?record=`. Le module de notification est conçu pour que seule
+l'implémentation d'envoi change, pas les appelants.
+
+## Migration `ResponsableBureau` texte → `ResponsableBureauEmail`
+
+`ResponsableBureau` est du texte libre. Pour cibler le DM Teams il faut l'email.
+
+1. Établir une correspondance `nom texte → email @elem.global`.
+2. Script de migration (voir plan) qui lit chaque projet et écrit
+   `ResponsableBureauEmail` d'après la correspondance. Les noms non mappés sont
    rapportés (log) pour traitement manuel.
 
-## Retrait de Streamlit
+Aucune invitation de collaborateur, aucun identifiant utilisateur Airtable requis.
 
-L'Interface Airtable remplace le dashboard. On retire l'app Streamlit :
-suppression de `app.py`, `dashboard.py`, `theme.py`, `transform.py` et de leurs
-tests, du dossier `.streamlit/` (config auth/secrets Streamlit), et de la
-dépendance `streamlit` dans `requirements.txt`. L'historique git conserve tout.
+## Streamlit conservé
 
-`airtable_client.py` est **conservé et allégé** (retirer la dépendance à
-`st.secrets` dans `get_config`, garder lecture via variables d'environnement)
-car il sert de client Airtable réutilisable pour le script de migration et les
-futurs sous-projets B et C.
+Aucune suppression de fichiers. `app.py`, `dashboard.py`, `theme.py`,
+`transform.py`, `airtable_client.py` et leurs tests restent. On **ajoute** :
+- le routage `?record=` dans `app.py` ;
+- la page d'approbation et le module `approvals.py` ;
+- le module `notifications.py` (Graph) ;
+- le script de migration ;
+- l'action « Envoyer pour approbation » dans l'onglet Projets.
+
+## Découpage code + tests (TDD)
+
+Logique pure isolée du rendu Streamlit, comme les fonctions existantes
+`compute_inline_updates` / `build_text_payload`.
+
+- `app.py` : sélection de surface selon `st.query_params` (`?record=` → page
+  d'approbation ; sinon dashboard).
+- `approvals.py` (pur, testé) : `target_record_id(query_params)`,
+  `build_approval_payload(approver_email, today)`,
+  `build_rejection_payload(reason)`.
+- `notifications.py` : envoi Graph (I/O) + helpers purs (lien, corps du message).
+- `migrate_responsable_email.py` : fonction pure de correspondance (nom→email) +
+  runner qui écrit `ResponsableBureauEmail`.
+- Rendu Streamlit (page d'approbation, bouton « Envoyer pour approbation »)
+  gardé fin ; toute la logique décisionnelle passe par les fonctions pures.
 
 ## Nature du livrable
 
-Contrairement au code Streamlit, l'essentiel de A se configure dans l'UI Airtable
-et n'est pas du code testable en TDD. Le livrable est :
-1. Un **runbook de configuration** pas-à-pas (création des champs, Interface,
-   automatisations) — la création des champs se fait à la main dans l'UI (peu de
-   champs, une fois).
-2. Un **script de migration** `ResponsableBureau → ResponsableBureauUser`
-   (répétitif sur beaucoup d'enregistrements → automatisé), testable.
-3. Le **retrait de Streamlit** (suppression de fichiers).
+1. Un **runbook de configuration** : champs Airtable, automatisation d'entrée
+   `À rédiger`, inscription d'app Azure AD/Graph, `base_url` SharePoint,
+   `base_app_url` du lien d'approbation.
+2. Du **code testable** : routage `app.py`, `approvals.py`, `notifications.py`,
+   script de migration, action « Envoyer pour approbation ».
+3. Aucune suppression de Streamlit.
 
 ## Tests / acceptation
 
-- **Script de migration** : tests unitaires sur la fonction pure de correspondance
-  (nom → userId ; nom inconnu → rapporté ; casse/espaces normalisés).
-- **Acceptation manuelle du flux** (runbook) : créer un projet de test non
-  confidentiel → vérifier passage auto à `À rédiger` ; remplir les brouillons +
-  passer à `En attente d'approbation` → vérifier réception de l'email par le bon
-  responsable ; ouvrir l'Interface → le projet apparaît sous le bon utilisateur,
-  pas sous un autre ; cliquer Approuver → `Approuvé` + `ApprouvéPar`/`DateApprobation`
-  remplis ; cliquer Rejeter sur un autre → `Rejeté` + `RaisonRejet` saisie ;
-  vérifier qu'un projet confidentiel ne passe jamais à `À rédiger`.
-- Après retrait de Streamlit : `pytest` passe (ne reste que les tests du script
-  de migration et d'`airtable_client`).
+- **Fonctions pures** (unitaires) : correspondance nom→email (nom inconnu →
+  rapporté ; casse/espaces normalisés) ; `target_record_id` (présent / absent) ;
+  `build_approval_payload` / `build_rejection_payload` ; construction du lien et
+  du corps de message de notification.
+- **Acceptation manuelle du flux** (runbook) : projet test non confidentiel →
+  passage auto à `À rédiger` ; remplir les brouillons + « Envoyer pour
+  approbation » → `En attente d'approbation` **et** le bon responsable reçoit un
+  DM Teams avec le lien ; ouvrir le lien → page d'approbation d'un seul
+  brouillon (pas le dashboard) ; Approuver → `Approuvé` avec
+  `ApprouvéPar`/`DateApprobation` ; sur un autre, Rejeter avec motif → `Rejeté` +
+  `RaisonRejet` ; un projet confidentiel ne passe jamais à `À rédiger`.
+- `pytest` passe (tests existants + nouveaux modules).
 
 ## Hors périmètre (YAGNI)
 
 - Génération des brouillons par Hermès (sous-projet B).
-- Accès/récupération des photos SharePoint *dans* Airtable — ici on ne met qu'un
-  **lien** ; tirer les images relève de B (Hermès a besoin des photos pour rédiger).
+- Récupération des photos SharePoint *dans* Airtable — ici un simple **lien** ;
+  tirer les images relève de B.
 - Publication automatique réseaux/site et recopie brouillon → live (sous-projet C).
 - Approbation par canal séparé : une seule approbation couvre post + descriptions.
-- Notification Teams (on s'en tient à l'email Airtable).
+- Contrôle de rôle strict / blocage dur du dashboard pour les responsables
+  (routage souple accepté en A).
+- Édition du brouillon pendant l'approbation (approuver/rejeter seulement).
+- Interface Airtable et pivot M365/Power Automate (abandonnés).
