@@ -26,8 +26,14 @@ def main():
             st.logout()
         st.stop()
 
-    import dashboard
-    dashboard.render()
+    import approvals
+    record_id = approvals.target_record_id(st.query_params)
+    if record_id:
+        import approval_page
+        approval_page.render(record_id)
+    else:
+        import dashboard
+        dashboard.render()
 
 
 main()
